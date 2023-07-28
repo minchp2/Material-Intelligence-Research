@@ -16,22 +16,23 @@ vasp_out_file="vasp.out"
 def parse_args():
     parser=argparse.ArgumentParser(description="postprocessing program, reads in statuses, fixes errors, and outputs to post_data file")
     parser.add_argument("-p", "--output_pkl", help="output is .pkl if flag is present, otherwise output is csv", action="store_true")
-    parser.add_argument("-j", "--jobs_folder", help="top folder for job files")
+    parser.add_argument("-j", "--jobs_folder", help="top folder for job files",default=None)
     parser.add_argument("-o", "--vasp_out_file", help="name of vasp output file, default=vasp.out",default="vasp.out")
+    parser.add_argument("-f","--folder_names",help="list of job folder names to filter by, if not set, include all folders")
     args=parser.parse_args()
     return args
 
-def get_statuses():
+def get_statuses(folder_names=None,vasp_out_file="vasp.out"):
     statuses={}
     vasp_files=["POSCAR","INCAR","KPOINTS","POTCAR"]
     for jobdir, _, files in os.walk(jobsdir):
         #find folders
 
-        if all(f in files for f in vasp_files):
+        if all(f in files for f in vasp_files) and ((folder_names is None) or (jobdir.split("/")[-1] in folder_names)):
             #look at outfile to see statuses of jobs
-            outs=glob.glob(jobdir+"/vasp.out")
+            outs=glob.glob(jobdir+"/"+vasp_out_file)
             if len(outs)>0:
-                with open(glob.glob(jobdir+"/vasp.out")[-1]) as outfile, open(glob.glob(jobdir+"/*.err")[-1]) as err_file:
+                with open(glob.glob(jobdir+"/"+vasp_out_file)[-1]) as outfile, open(glob.glob(jobdir+"/*.err")[-1]) as err_file:
                     for line in outfile:
                         if "Starting up job" in line:
                             #i+=1
@@ -65,7 +66,7 @@ def get_statuses():
                             break
                     if jobdir not in statuses:
                         statuses[jobdir]="FAILED"
-                        print(jobdir,"was mysterious to me")
+                        print(jobdir,"failed with unknown error")
 
     return statuses
 
@@ -90,6 +91,8 @@ def load_poscar(file):
 
 def load_incar(jobdir):
     ic=Incar.from_file(os.path.join(jobdir,"INCAR"))
+    if "SAXIS" not in ic:
+        ic["SAXIS"]="0 0 1"
     return ic
 
 def get_potcar_symbols(jobdir):
@@ -110,13 +113,15 @@ if __name__ == '__main__':
 
     inputs=parse_args()
     jobsdir=inputs.jobs_folder
+    folder_names=inputs.folder_names
+    print(folder_names)
     vasp_out_file=inputs.vasp_out_file
     if inputs.output_pkl:
         out_type="pickle"
     else:
         out_type="csv"
 
-    statuses=get_statuses()
+    statuses=get_statuses(folder_names=folder_names,vasp_out_file=vasp_out_file)
     print(statuses)
     print(len(statuses))
 
